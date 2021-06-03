@@ -32,23 +32,53 @@ protected:
 	DECLARE_MESSAGE_MAP()
 
 protected:
-	int m_listbox_cnt;
-	int m_today_year;
-	int m_today_month;
-	int m_today_day;
-	int m_today_week;
-	int m_firstday_week;
-	int m_lastday_day;
-	int m_lastday_week;
-	CBrush m_today_hbr;
+	struct CalendarDate
+	{
+		int year = 0;
+		int month = 0;
+		int day = 0;
+		int week = 0;
+
+		int firstday_week = 0;
+		int lastday_day = 0;
+		int lastday_week = 0;
+
+		int beforelast_year = 0;
+		int beforelast_month = 0;
+		int beforelast_day = 0;
+
+		int nextfirst_year = 0;
+		int nextfirst_month = 0;
+	};
+
+	CalendarDate calendarDate, todayDate;
 protected:
+	BOOL m_bInit;
+
+	int m_nBeforeDayListBox;
+	int m_nDayListBox;
+	int m_nNextDayListBox;
+
 	CStatic *m_pMonthStatic;
 	CStatic *m_pWeekStatic[7];
 	CListBox **m_pBeforeDayListBox, **m_pDayListBox, **m_pNextDayListBox;
-protected:
+	CButton *m_pTodayBtn;
+	CButton *m_pBeforeMonthBtn, *m_pNextMonthBtn;
+
+	CBrush m_today_hbr;
+
+	void GetToday();
 	void GetDate();
+	void GetDate(int nYear, int nMonth);
+	void InitMonthlyCalendar();
 	void DrawMonthlyCalendar();
+	void ResizeCalendar(int cx, int cy);
+	void DeleteDayListBox();
 public:
 	afx_msg void OnDestroy();
 	afx_msg HBRUSH OnCtlColor(CDC *pDC, CWnd *pWnd, UINT nCtlColor);
+	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnBnClickedTodayButton();
+	afx_msg void OnBnClickedBeforeMonthButton();
+	afx_msg void OnBnClickedNextMonthButton();
 };

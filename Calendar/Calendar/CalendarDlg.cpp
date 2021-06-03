@@ -14,15 +14,20 @@
 #define new DEBUG_NEW
 #endif
 
-#define THIS_LISTBOX_ID 10001
-#define BEFORE_LISTBOX_ID 11001
-#define NEXT_LISTBOX_ID 12001
-#define WEEK_STATIC_ID 13001
+#define THIS_LISTBOX_ID			10001
+#define BEFORE_LISTBOX_ID		11001
+#define NEXT_LISTBOX_ID			12001
+#define WEEK_STATIC_ID			13001
 
-#define DAY_LIST_START_X 0
-#define DAY_LIST_START_Y 70
-#define DAY_LIST_WIDTH 100
-#define DAY_LIST_HEIGHT 100
+#define DAY_LIST_START_X		0
+#define DAY_LIST_START_Y		70
+#define DAY_LIST_WIDTH			100
+#define DAY_LIST_HEIGHT			100
+
+#define IDC_MONTH_STATIC		1001
+#define IDC_TODAY_BTN			1002
+#define IDC_MONTH_BEFORE_BTN	1003
+#define IDC_MONTH_NEXT_BTN		1004
 
 // CCalendarDlg dialog
 
@@ -33,20 +38,11 @@ CCalendarDlg::CCalendarDlg(CWnd* pParent /*=nullptr*/)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 
-	m_listbox_cnt = 0;
-	m_today_year = -1;
-	m_today_month = -1;
-	m_today_day = -1;
-	m_today_week = -1;
-	m_firstday_week = -1;
-	m_lastday_day = -1;
-	m_lastday_week = -1;
+	m_bInit = FALSE;
 
-	m_pMonthStatic = NULL;
-
-	m_pBeforeDayListBox = NULL;
-	m_pDayListBox = NULL;
-	m_pNextDayListBox = NULL;
+	m_nBeforeDayListBox = 0;
+	m_nDayListBox = 0;
+	m_nNextDayListBox = 0;
 
 	m_today_hbr.CreateSolidBrush(RGB(246, 246, 246));
 }
@@ -61,6 +57,10 @@ BEGIN_MESSAGE_MAP(CCalendarDlg, CDialog)
 	ON_WM_QUERYDRAGICON()
 	ON_WM_DESTROY()
 	ON_WM_CTLCOLOR()
+	ON_WM_SIZE()
+	ON_BN_CLICKED(IDC_TODAY_BTN, &CCalendarDlg::OnBnClickedTodayButton)
+	ON_BN_CLICKED(IDC_MONTH_BEFORE_BTN, &CCalendarDlg::OnBnClickedBeforeMonthButton)
+	ON_BN_CLICKED(IDC_MONTH_NEXT_BTN, &CCalendarDlg::OnBnClickedNextMonthButton)
 END_MESSAGE_MAP()
 
 
@@ -76,11 +76,12 @@ BOOL CCalendarDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
-	//MoveWindow(0, 0, DAY_LIST_WIDTH * 7 + 50, DAY_LIST_START_Y + DAY_LIST_HEIGHT * 6 + 70);
 	MoveWindow(0, 0, 1024, 768);
-
-	GetDate();
+	GetToday();
+	InitMonthlyCalendar();
 	DrawMonthlyCalendar();
+
+	m_bInit = TRUE;
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -121,19 +122,19 @@ HCURSOR CCalendarDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-void CCalendarDlg::GetDate()
+void CCalendarDlg::GetToday()
 {
 	//현재 날짜 구하기 
 	CTime time = CTime::GetTickCount();
-	m_today_year = time.GetYear();
-	m_today_month = time.GetMonth();
-	m_today_day = time.GetDay();
-	m_today_week = time.GetDayOfWeek();//요일반환 1 = 일요일, 2 = 월요일, 7 = 토요일
+	calendarDate.year = time.GetYear();
+	calendarDate.month = time.GetMonth();
+	calendarDate.day = time.GetDay();
+	calendarDate.week = time.GetDayOfWeek();//요일반환 1 = 일요일, 2 = 월요일, 7 = 토요일
 
 	/* 현재달 시작일 구하기 */
 	//CTime(년, 월, 일, 시, 분, 초);
-	CTime firstDay = CTime(m_today_year, m_today_month, 1, 9, 0, 0);
-	m_firstday_week = firstDay.GetDayOfWeek();
+	CTime firstDay = CTime(calendarDate.year, calendarDate.month, 1, 9, 0, 0);
+	calendarDate.firstday_week = firstDay.GetDayOfWeek();
 
 	/* 이전 마지막 일자 구하기 */
 	//하루 24시간의 tick값 CTimeSpan(일, 시간, 분, 초);  
@@ -145,20 +146,169 @@ void CCalendarDlg::GetDate()
 	//시작일에서 하루 빼기  
 	firstDay -= span;
 
-	int beforeYear = firstDay.GetYear();
-	int beforeMonth = firstDay.GetMonth();
-	int beforeDay = firstDay.GetDay();
+	calendarDate.beforelast_year = firstDay.GetYear();
+	calendarDate.beforelast_month = firstDay.GetMonth();
+	calendarDate.beforelast_day = firstDay.GetDay();
+
+	/* 현재달 마지막일 구하기 */
+	//다음달 시작일 구함  
+	CTime cTimelastDay = CTime(calendarDate.year, calendarDate.month + 1, 1, 9, 0, 0);
+	calendarDate.nextfirst_year = cTimelastDay.GetYear();
+	calendarDate.nextfirst_month = cTimelastDay.GetMonth();
+
+	cTimelastDay -= span;
+
+	calendarDate.lastday_day = cTimelastDay.GetDay();
+	calendarDate.lastday_week = cTimelastDay.GetDayOfWeek();
+
+	todayDate = calendarDate;
+}
+
+void CCalendarDlg::GetDate()
+{
+	//현재 날짜 구하기 
+	CTime time = CTime::GetTickCount();
+	int year = time.GetYear();
+	int month = time.GetMonth();
+	int day = time.GetDay();
+	int week = time.GetDayOfWeek();//요일반환 1 = 일요일, 2 = 월요일, 7 = 토요일
+
+	/* 현재달 시작일 구하기 */
+	//CTime(년, 월, 일, 시, 분, 초);
+	CTime firstDay = CTime(year, month, 1, 9, 0, 0);
+	int firstday_week = firstDay.GetDayOfWeek();
+
+	/* 이전 마지막 일자 구하기 */
+	//하루 24시간의 tick값 CTimeSpan(일, 시간, 분, 초);  
+	CTimeSpan span(1, 0, 0, 0);
+
+	//그냥 86400초 빼도 된다.  
+	//int oneDay = 24 * 60 * 60;   
+
+	//시작일에서 하루 빼기  
+	firstDay -= span;
+
+	int beforeday_year = firstDay.GetYear();
+	int beforeday_month = firstDay.GetMonth();
+	int beforeday_day = firstDay.GetDay();
 	int beforeWeek = firstDay.GetDayOfWeek();
 
 	/* 현재달 마지막일 구하기 */
 	//다음달 시작일 구함  
-	CTime cTimelastDay = CTime(m_today_year, m_today_month + 1, 1, 9, 0, 0);
+	CTime cTimelastDay = CTime(year, month + 1, 1, 9, 0, 0);
+	int next_year = cTimelastDay.GetYear();
+	int next_month = cTimelastDay.GetMonth();
+
 	cTimelastDay -= span;
 
 	int lastYear = cTimelastDay.GetYear();
 	int lastMonth = cTimelastDay.GetMonth();
-	m_lastday_day = cTimelastDay.GetDay();
-	m_lastday_week = cTimelastDay.GetDayOfWeek();
+	int lastday_day = cTimelastDay.GetDay();
+	int lastday_week = cTimelastDay.GetDayOfWeek();
+}
+
+void CCalendarDlg::GetDate(int nYear, int nMonth)
+{
+	calendarDate.year = nYear;
+	calendarDate.month = nMonth;
+	calendarDate.day = 0;
+	calendarDate.week = 0;
+
+	/* 현재달 시작일 구하기 */
+	//CTime(년, 월, 일, 시, 분, 초);
+	CTime firstDay = CTime(calendarDate.year, calendarDate.month, 1, 9, 0, 0);
+	calendarDate.firstday_week = firstDay.GetDayOfWeek();
+
+	/* 이전 마지막 일자 구하기 */
+	//하루 24시간의 tick값 CTimeSpan(일, 시간, 분, 초);  
+	CTimeSpan span(1, 0, 0, 0);
+
+	//그냥 86400초 빼도 된다.  
+	//int oneDay = 24 * 60 * 60;   
+
+	//시작일에서 하루 빼기  
+	firstDay -= span;
+
+	calendarDate.beforelast_year = firstDay.GetYear();
+	calendarDate.beforelast_month = firstDay.GetMonth();
+	calendarDate.beforelast_day = firstDay.GetDay();
+
+	/* 현재달 마지막일 구하기 */
+	//다음달 시작일 구함
+	CTime cTimelastDay;
+	if (calendarDate.month == 12)
+		cTimelastDay = CTime(calendarDate.year + 1, 1, 1, 9, 0, 0);
+	else
+		cTimelastDay = CTime(calendarDate.year, calendarDate.month + 1, 1, 9, 0, 0);
+	calendarDate.nextfirst_year = cTimelastDay.GetYear();
+	calendarDate.nextfirst_month = cTimelastDay.GetMonth();
+
+	cTimelastDay -= span;
+
+	calendarDate.lastday_day = cTimelastDay.GetDay();
+	calendarDate.lastday_week = cTimelastDay.GetDayOfWeek();
+}
+
+void CCalendarDlg::InitMonthlyCalendar()
+{
+	CRect rectDlg;
+	this->GetWindowRect(rectDlg);
+
+	// month
+	// get system font
+//	LOGFONT lf;
+//	CFont *pFont = CFont::FromHandle((HFONT)GetStockObject(DEFAULT_GUI_FONT));
+//	pFont->GetLogFont(&lf);
+
+	CFont *pMonthFont = new CFont();
+	pMonthFont->CreateFont(
+		30,						// 글자높이
+		10,						// 글자너비
+		0,						// 출력각도
+		0,						// 기준 선에서의각도
+		FW_NORMAL,				// 글자굵기
+		FALSE,					// Italic 적용여부
+		FALSE,					// 밑줄적용여부
+		FALSE,					// 취소선적용여부
+		DEFAULT_CHARSET,		// 문자셋종류
+		OUT_DEFAULT_PRECIS,		// 출력정밀도
+		CLIP_DEFAULT_PRECIS,	// 클리핑정밀도
+		DEFAULT_QUALITY,		// 출력문자품질
+		DEFAULT_PITCH,			// 글꼴Pitch
+		_T("맑은 고딕")			// 글꼴
+	);
+
+	m_pMonthStatic = new CStatic();
+	m_pMonthStatic->Create(_T(""), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, CRect(rectDlg.Width() / 2 - 100, 0, rectDlg.Width() / 2 + 100, 50), this);
+	m_pMonthStatic->SetFont(pMonthFont);
+
+	// move to today button
+	m_pTodayBtn = new CButton();
+	m_pTodayBtn->Create(_T("오늘"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, CRect((rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2, 10, (rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2 + 50, 40), this, IDC_TODAY_BTN);
+	m_pTodayBtn->SetFont(GetFont());
+
+	// month button
+	m_pBeforeMonthBtn = new CButton();
+	m_pBeforeMonthBtn->Create(_T("<<"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, CRect(rectDlg.Width() / 2 - 140, 10, rectDlg.Width() / 2 - 110, 40), this, IDC_MONTH_BEFORE_BTN);
+	m_pBeforeMonthBtn->SetFont(GetFont());
+
+	m_pNextMonthBtn = new CButton();
+	m_pNextMonthBtn->Create(_T(">>"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, CRect(rectDlg.Width() / 2 + 110, 10, rectDlg.Width() / 2 + 140, 40), this, IDC_MONTH_NEXT_BTN);
+	m_pNextMonthBtn->SetFont(GetFont());
+
+	// week
+	CString strWeek[7] = { _T("일"), _T("월"), _T("화"), _T("수"), _T("목"), _T("금"),_T("토") };
+
+	CRect rectStatic;
+	rectStatic.SetRect((rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2, 50, (rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2 + DAY_LIST_WIDTH, 70);
+
+	for (int i = 0; i < 7; i++)
+	{
+		m_pWeekStatic[i] = new CStatic();
+		m_pWeekStatic[i]->Create(strWeek[i], WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID + i);
+		m_pWeekStatic[i]->SetFont(GetFont());
+		rectStatic.MoveToXY((rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2 + (i + 1) * DAY_LIST_WIDTH, 50);
+	}
 }
 
 void CCalendarDlg::DrawMonthlyCalendar()
@@ -167,76 +317,41 @@ void CCalendarDlg::DrawMonthlyCalendar()
 	this->GetWindowRect(rectDlg);
 
 	// month
-//	_TCHAR month[4];
-//	memset(month, 0, sizeof(month));
-//	_stprintf_s(month, _countof(month), _T("%d월"), m_today_month);
 	CString strMonth;
-	strMonth.Format(_T("%d월"), m_today_month);
-	
-	m_pMonthStatic = new CStatic();
-	m_pMonthStatic->Create(strMonth, WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, CRect(rectDlg.right / 2 - 25, 0, rectDlg.right / 2 + 25, 50), this);
-	m_pMonthStatic->SetFont(GetFont());
-
-	// week
-	CRect rectStatic;
-	rectStatic.SetRect((rectDlg.right - DAY_LIST_WIDTH * 7) / 2, 50, (rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + DAY_LIST_WIDTH, 70);
-
-	m_pWeekStatic[0] = new CStatic();
-	m_pWeekStatic[0]->Create(_T("일"), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID);
-	m_pWeekStatic[0]->SetFont(GetFont());
-	rectStatic.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + DAY_LIST_WIDTH, 50);
-
-	m_pWeekStatic[1] = new CStatic();
-	m_pWeekStatic[1]->Create(_T("월"), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID + 1);
-	m_pWeekStatic[1]->SetFont(GetFont());
-	rectStatic.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + 2 * DAY_LIST_WIDTH, 50);
-
-	m_pWeekStatic[2] = new CStatic();
-	m_pWeekStatic[2]->Create(_T("화"), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID + 2);
-	m_pWeekStatic[2]->SetFont(GetFont());
-	rectStatic.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + 3 * DAY_LIST_WIDTH, 50);
-
-	m_pWeekStatic[3] = new CStatic();
-	m_pWeekStatic[3]->Create(_T("수"), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID + 3);
-	m_pWeekStatic[3]->SetFont(GetFont());
-	rectStatic.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + 4 * DAY_LIST_WIDTH, 50);
-
-	m_pWeekStatic[4] = new CStatic();
-	m_pWeekStatic[4]->Create(_T("목"), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID + 4);
-	m_pWeekStatic[4]->SetFont(GetFont());
-	rectStatic.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + 5 * DAY_LIST_WIDTH, 50);
-
-	m_pWeekStatic[5] = new CStatic();
-	m_pWeekStatic[5]->Create(_T("금"), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID + 5);
-	m_pWeekStatic[5]->SetFont(GetFont());
-	rectStatic.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + 6 * DAY_LIST_WIDTH, 50);
-
-	m_pWeekStatic[6] = new CStatic();
-	m_pWeekStatic[6]->Create(_T("토"), WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_CENTER | SS_CENTERIMAGE, rectStatic, this, WEEK_STATIC_ID + 6);
-	m_pWeekStatic[6]->SetFont(GetFont());
-	rectStatic.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + 2 * DAY_LIST_WIDTH, 50);
+	strMonth.Format(_T("%d년 %d월"), calendarDate.year, calendarDate.month);
+	m_pMonthStatic->SetWindowTextW(strMonth);
 
 	// day
-	m_pBeforeDayListBox = new CListBox * [m_firstday_week - 1];
-	m_pDayListBox = new CListBox * [m_lastday_day];
-	m_pNextDayListBox = new CListBox * [8 - m_lastday_week];
+	DeleteDayListBox();
+
+	m_pBeforeDayListBox = new CListBox * [calendarDate.firstday_week - 1];
+	m_pDayListBox = new CListBox * [calendarDate.lastday_day];
+	m_pNextDayListBox = new CListBox * [8 - calendarDate.lastday_week];
 
 	CRect rectList;
-	rectList.SetRect((rectDlg.right - DAY_LIST_WIDTH * 7) / 2, DAY_LIST_START_Y, (rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + DAY_LIST_WIDTH, DAY_LIST_START_Y + DAY_LIST_HEIGHT);
+	rectList.SetRect((rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2, DAY_LIST_START_Y, (rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2 + DAY_LIST_WIDTH, DAY_LIST_START_Y + DAY_LIST_HEIGHT);
 
 	CString strDay = _T("");
 	int nWeekCnt = 0;
+	m_nBeforeDayListBox = 0;
+	m_nDayListBox = 0;
+	m_nNextDayListBox = 0;
 
-	for (int i = 0; i < m_firstday_week - 1; i++)
+	for (int i = 0; i < calendarDate.firstday_week - 1; i++)
 	{
+		strDay.Format(_T("%d"), calendarDate.beforelast_day - calendarDate.firstday_week + 2 + i);
+
 		m_pBeforeDayListBox[i] = new CListBox();
 		m_pBeforeDayListBox[i]->Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | WS_DISABLED | LBS_STANDARD | LBS_NOSEL | LBS_NOTIFY | LBS_SORT, rectList, this, BEFORE_LISTBOX_ID + i);
 		m_pBeforeDayListBox[i]->SetFont(GetFont());
+		m_pBeforeDayListBox[i]->AddString(strDay);
 
-		rectList.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + (i + 1) * DAY_LIST_WIDTH, DAY_LIST_START_Y);
+		rectList.MoveToXY((rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2 + (i + 1) * DAY_LIST_WIDTH, DAY_LIST_START_Y);
+
+		m_nBeforeDayListBox += 1;
 	}
 
-	for (int i = 0, x = m_firstday_week - 1; i < m_lastday_day; i++)
+	for (int i = 0, x = calendarDate.firstday_week - 1; i < calendarDate.lastday_day; i++)
 	{
 		strDay.Format(_T("%d"), i + 1);
 
@@ -255,26 +370,80 @@ void CCalendarDlg::DrawMonthlyCalendar()
 			x += 1;
 		}
 
-		rectList.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + x * DAY_LIST_WIDTH, DAY_LIST_START_Y + nWeekCnt * DAY_LIST_HEIGHT);
+		rectList.MoveToXY((rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2 + x * DAY_LIST_WIDTH, DAY_LIST_START_Y + nWeekCnt * DAY_LIST_HEIGHT);
+
+		m_nDayListBox += 1;
 	}
 
-	for (int i = 0; i <= 7 - m_lastday_week; i++)
+	for (int i = 0; i < 7 - calendarDate.lastday_week; i++)
 	{
+		strDay.Format(_T("%d"), 1 + i);
+		
 		m_pNextDayListBox[i] = new CListBox();
 		m_pNextDayListBox[i]->Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | WS_DISABLED | LBS_STANDARD | LBS_NOSEL | LBS_NOTIFY | LBS_SORT, rectList, this, NEXT_LISTBOX_ID + i);
 		m_pNextDayListBox[i]->SetFont(GetFont());
+		m_pNextDayListBox[i]->AddString(strDay);
 
-		rectList.MoveToXY((rectDlg.right - DAY_LIST_WIDTH * 7) / 2 + (m_lastday_week + i) * DAY_LIST_WIDTH, DAY_LIST_START_Y + nWeekCnt * DAY_LIST_HEIGHT);
+		rectList.MoveToXY((rectDlg.Width() - DAY_LIST_WIDTH * 7) / 2 + (calendarDate.lastday_week + 1 + i) * DAY_LIST_WIDTH, DAY_LIST_START_Y + nWeekCnt * DAY_LIST_HEIGHT);
+
+		m_nNextDayListBox += 1;
 	}
 }
 
-void CCalendarDlg::OnDestroy()
+void CCalendarDlg::ResizeCalendar(int cx, int cy)
 {
-	CDialog::OnDestroy();
+	if (!m_bInit)
+		return;
 
+	m_pMonthStatic->MoveWindow(CRect(cx / 2 - 100, 0, cx / 2 + 100, 50));
+	m_pTodayBtn->MoveWindow(CRect((cx - DAY_LIST_WIDTH * 7) / 2, 10, (cx - DAY_LIST_WIDTH * 7) / 2 + 50, 40));
+	m_pBeforeMonthBtn->MoveWindow(CRect(cx / 2 - 140, 10, cx / 2 - 110, 40));
+	m_pNextMonthBtn->MoveWindow(CRect(cx / 2 + 110, 10, cx / 2 + 140, 40));
+
+	for (int i = 0; i < 7; i++)
+	{
+		m_pWeekStatic[i]->MoveWindow(CRect((cx - DAY_LIST_WIDTH * 7) / 2 + i * DAY_LIST_WIDTH, 50, (cx - DAY_LIST_WIDTH * 7) / 2 + (i + 1) * DAY_LIST_WIDTH, 70));
+	}
+
+	CRect rectList;
+	rectList.SetRect((cx - DAY_LIST_WIDTH * 7) / 2, DAY_LIST_START_Y, (cx - DAY_LIST_WIDTH * 7) / 2 + DAY_LIST_WIDTH, DAY_LIST_START_Y + DAY_LIST_HEIGHT);
+
+	for (int i = 0; i < m_nBeforeDayListBox; i++)
+	{
+		m_pBeforeDayListBox[i]->MoveWindow(rectList);
+		rectList.MoveToXY((cx - DAY_LIST_WIDTH * 7) / 2 + (i + 1) * DAY_LIST_WIDTH, DAY_LIST_START_Y);
+	}
+
+	int nWeekCnt = 0;
+	for (int i = 0, x = calendarDate.firstday_week - 1; i < m_nDayListBox; i++)
+	{
+		m_pDayListBox[i]->MoveWindow(rectList);
+
+		if (x == 6)
+		{
+			x = 0;
+			nWeekCnt += 1;
+		}
+		else
+		{
+			x += 1;
+		}
+
+		rectList.MoveToXY((cx - DAY_LIST_WIDTH * 7) / 2 + x * DAY_LIST_WIDTH, DAY_LIST_START_Y + nWeekCnt * DAY_LIST_HEIGHT);
+	}
+
+	for (int i = 0; i < m_nNextDayListBox; i++)
+	{
+		m_pNextDayListBox[i]->MoveWindow(rectList);
+		rectList.MoveToXY((cx - DAY_LIST_WIDTH * 7) / 2 + (calendarDate.lastday_week + 1 + i) * DAY_LIST_WIDTH, DAY_LIST_START_Y + nWeekCnt * DAY_LIST_HEIGHT);
+	}
+}
+
+void CCalendarDlg::DeleteDayListBox()
+{
 	if (m_pBeforeDayListBox != NULL)
 	{
-		for (int i = 0; i < m_firstday_week - 1; i++)
+		for (int i = 0; i < m_nBeforeDayListBox; i++)
 		{
 			delete m_pBeforeDayListBox[i];
 			m_pBeforeDayListBox[i] = NULL;
@@ -284,7 +453,7 @@ void CCalendarDlg::OnDestroy()
 
 	if (m_pDayListBox != NULL)
 	{
-		for (int i = m_lastday_week; i < m_lastday_day; i++)
+		for (int i = 0; i < m_nDayListBox; i++)
 		{
 			delete m_pDayListBox[i];
 			m_pDayListBox[i] = NULL;
@@ -294,13 +463,20 @@ void CCalendarDlg::OnDestroy()
 
 	if (m_pNextDayListBox != NULL)
 	{
-		for (int i = 0; i <= 7 - m_lastday_week; i++)
+		for (int i = 0; i < m_nNextDayListBox; i++)
 		{
 			delete m_pNextDayListBox[i];
 			m_pNextDayListBox[i] = NULL;
 		}
 		delete[] m_pNextDayListBox;
 	}
+}
+
+void CCalendarDlg::OnDestroy()
+{
+	CDialog::OnDestroy();
+
+	DeleteDayListBox();
 }
 
 
@@ -311,7 +487,6 @@ HBRUSH CCalendarDlg::OnCtlColor(CDC *pDC, CWnd *pWnd, UINT nCtlColor)
 	// TODO:  Change any attributes of the DC here
 
 	// TODO:  Return a different brush if the default is not desired
-
 	if (pWnd->GetDlgCtrlID() == WEEK_STATIC_ID)
 	{
 		pDC->SetTextColor(RGB(255, 0, 0));
@@ -320,10 +495,39 @@ HBRUSH CCalendarDlg::OnCtlColor(CDC *pDC, CWnd *pWnd, UINT nCtlColor)
 	{
 		pDC->SetTextColor(RGB(0, 0, 255));
 	}
-	else if (pWnd->GetDlgCtrlID() == THIS_LISTBOX_ID + m_today_day - 1)	// set today
+	else if (pWnd->GetDlgCtrlID() == THIS_LISTBOX_ID + todayDate.day - 1 && calendarDate.year == todayDate.year && calendarDate.month == todayDate.month)	// set today
 	{
 		return m_today_hbr;
 	}
 
 	return hbr;
+}
+
+
+void CCalendarDlg::OnSize(UINT nType, int cx, int cy)
+{
+	CDialog::OnSize(nType, cx, cy);
+
+	ResizeCalendar(cx, cy);
+
+}
+
+
+void CCalendarDlg::OnBnClickedTodayButton()
+{
+	GetToday();
+	DrawMonthlyCalendar();
+}
+
+
+void CCalendarDlg::OnBnClickedBeforeMonthButton()
+{
+	GetDate(calendarDate.beforelast_year, calendarDate.beforelast_month);
+	DrawMonthlyCalendar();
+}
+
+void CCalendarDlg::OnBnClickedNextMonthButton()
+{
+	GetDate(calendarDate.nextfirst_year, calendarDate.nextfirst_month);
+	DrawMonthlyCalendar();
 }
